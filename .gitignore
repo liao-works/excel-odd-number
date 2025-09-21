@@ -8,3 +8,6 @@ __pycache__/
 *.pyzw
 *.pyzwz
 output/
+excel_tool_env/
+build/
+dist/

@@ -1,5 +1,5 @@
-# 注意：pandas使用系统已安装版本
-# pandas==2.1.4 (已通过conda安装)
+pandas==2.1.4
 openpyxl==3.1.2
 ttkbootstrap==1.12.2
-pyinstaller==5.13.2
+pyinstaller==6.3.0
+numpy==1.24.3

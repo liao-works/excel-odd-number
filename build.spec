@@ -1,10 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import sys
+import os
 from pathlib import Path
 
-# 项目根目录
-project_root = Path(__file__).parent
+# 项目根目录 - 在spec文件中使用当前工作目录
+project_root = Path.cwd()
 
 a = Analysis(
     ['main.py'],  # 主程序入口
@@ -18,7 +19,13 @@ a = Analysis(
     ],
     hiddenimports=[
         'pandas',
+        'pandas._libs.tslibs.timedeltas',
+        'pandas._libs.tslibs.np_datetime', 
+        'pandas._libs.tslibs.nattype',
+        'pandas._libs.skiplist',
         'openpyxl', 
+        'openpyxl.workbook',
+        'openpyxl.worksheet.worksheet',
         'ttkbootstrap',
         'PIL',
         'PIL._tkinter_finder',
@@ -26,6 +33,11 @@ a = Analysis(
         'tkinter.ttk',
         'tkinter.filedialog',
         'tkinter.messagebox',
+        'numpy',
+        'numpy.core._methods',
+        'numpy.lib.format',
+        'numpy.core._dtype_ctypes',
+        'pkg_resources.py2_warn',
     ],
     hookspath=[],
     hooksconfig={},
@@ -37,13 +49,9 @@ a = Analysis(
         'PySide6',
         'matplotlib',
         'scipy',
-        'numpy.distutils',
-        'distutils',
-        'pathlib',  # 排除冲突的pathlib包
-        'streamlit',  # 排除streamlit相关冲突
+        'streamlit',
     ],
     noarchive=False,
-    optimize=0,
 )
 
 pyz = PYZ(a.pure)
@@ -52,6 +60,7 @@ exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
+    a.zipfiles,
     a.datas,
     [],
     name='Excel数据处理工具',  # 生成的exe文件名
@@ -68,5 +77,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,  # 可以在这里指定图标文件路径
-    version_file=None,
 )
