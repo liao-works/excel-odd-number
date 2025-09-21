@@ -40,10 +40,11 @@ class ExcelProcessor:
         template_path = self.get_template_path(template_type)
 
         original_file_data = self.get_original_file_data(input_file, 0)
+        original_detail_file_data = self.get_original_file_data(detail_file, 0)
 
         if template_type == "UPS":
             ups_processor = UPSDataProcessor()
-            ups_processor.process_ups_data(original_file_data, detail_file, template_path, output_path)
+            ups_processor.process_ups_data(original_file_data, original_detail_file_data, template_path, output_path)
         elif template_type == "DPD":
             dpd_processor = DPDDataProcessor()
             dpd_processor.process_dpd_data(input_file, detail_file, template_path, output_path)
@@ -159,7 +160,7 @@ class ExcelProcessor:
         """
         获取输出文件路径
         """
-        return DESKTOP_PATH / f"{template_type}.xlsx"
+        return DESKTOP_PATH / f"{template_type}总结单-{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
     def get_template_path(self, template_type):
         """

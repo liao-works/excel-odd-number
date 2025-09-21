@@ -85,12 +85,24 @@ class MainWindow:
             bootstyle="info"
         )
 
+        # 主数据按钮框架
+        self.main_btn_frame = ttk_boot.Frame(self.upload_frame)
+
         # 文件选择按钮
         self.select_file_btn = ttk_boot.Button(
-            self.upload_frame,
+            self.main_btn_frame,
             text="📁 选择文件",
             command=self.select_file,
             bootstyle="outline-primary",
+            width=15
+        )
+
+        # 主数据清除按钮
+        self.clear_file_btn = ttk_boot.Button(
+            self.main_btn_frame,
+            text="🗑️ 清除文件",
+            command=self.clear_main_file,
+            bootstyle="outline-secondary",
             width=15
         )
 
@@ -219,7 +231,9 @@ class MainWindow:
 
         # 文件上传区域
         self.upload_frame.pack(fill="x", padx=20, pady=8)
-        self.select_file_btn.pack(pady=8)
+        self.main_btn_frame.pack(pady=8)
+        self.select_file_btn.pack(side="left", padx=5)
+        self.clear_file_btn.pack(side="left", padx=5)
         self.file_path_label.pack(pady=3)
         self.drag_label.pack(pady=3)
 
@@ -290,6 +304,12 @@ class MainWindow:
             self.status_message.set(f"已选择明细表: {filename}")
         else:
             self.detail_file.set("")
+
+    def clear_main_file(self):
+        """清除主数据文件选择"""
+        self.selected_file.set("")
+        self.status_message.set("请选择Excel文件")
+        self.process_btn.config(state="disabled")
 
     def clear_detail_file(self):
         """清除明细表文件选择"""

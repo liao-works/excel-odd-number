@@ -42,14 +42,21 @@ class UPSDataProcessor:
                 "柜号": "提单号（集装箱/空运）"
             },
             "统计": {
-                "国家": "Destination",
+                "国家二字码": "Destination",
                 "件数": "Package",
                 "收货实重": "G.W",
                 "收货材积重": "V.W"
             },
+            "德国邮编": {
+              "收件人邮编": "zipcode",
+              "件数": "PCS",
+              "收货实重": "GW",
+              "收货材积重": "VW",
+              "country": "country"
+            },
             "子单号": {
-                "客户单号": "参考号（Reference NO)",
-                "子转单号": "UPS 子单号(Tracking Number)"
+                "客户单号": "参考号\n（Reference NO)",
+                "子转单号": "UPS 子单号\n(Tracking Number)"
             }
         }
 
@@ -72,13 +79,13 @@ class UPSDataProcessor:
             self.logger.error(f"获取模板工作簿时出错: {str(e)}")
             return None
 
-    def process_ups_data(self, original_file_data: pd.DataFrame, detail_file: str, template_path: str, output_path: str):
+    def process_ups_data(self, original_file_data: pd.DataFrame, original_detail_file_data: pd.DataFrame, template_path: str, output_path: str):
         """
         处理UPS数据并填充到模板中
 
         Args:
             original_file_data (pd.DataFrame): 原始文件数据
-            detail_file (str): 明细表文件路径
+            original_detail_file_data (pd.DataFrame): 原始明细表数据
             template_path (str): UPS模板路径
             output_path (str): 输出文件路径
 
@@ -92,12 +99,25 @@ class UPSDataProcessor:
 
             original_file_data_count = original_file_data.shape[0]
 
+            # 处理总结单工作表
             summary_sheet, first_empty_row, collection_total_row = self.get_template_summary_sheet(template_workbook)
             self.process_summary_sheet(template_workbook, summary_sheet, original_file_data, first_empty_row, collection_total_row, original_file_data_count)
 
+            # 处理运单信息工作表
             waybill_sheet, first_empty_row, collection_total_row = self.get_template_waybill_sheet(template_workbook)
             self.process_waybill_sheet(template_workbook, waybill_sheet, original_file_data, first_empty_row, collection_total_row, original_file_data_count)
 
+            # 处理统计工作表
+            static_sheet, first_empty_row, collection_total_row = self.get_template_static_sheet(template_workbook)
+            self.process_static_sheet(template_workbook, static_sheet, original_file_data, first_empty_row, collection_total_row, original_file_data_count)
+
+            # 处理德国邮编工作表
+            german_zipcode_sheet, first_empty_row, collection_total_row = self.get_template_german_zipcode_sheet(template_workbook)
+            self.process_german_zipcode_sheet(template_workbook, german_zipcode_sheet, original_file_data, first_empty_row, collection_total_row, original_file_data_count)
+
+            # 处理子单号工作表
+            sub_order_number_sheet, first_empty_row, collection_total_row = self.get_template_sub_order_number_sheet(template_workbook)
+            self.process_sub_order_number_sheet(template_workbook, sub_order_number_sheet, original_detail_file_data, first_empty_row, collection_total_row, original_file_data_count)
 
             # 使用workbook对象保存文件
             template_workbook.save(output_path)
@@ -138,82 +158,6 @@ class UPSDataProcessor:
         # collection_total_row = summary_sheet_count + need_fill_row_count
 
       self.fill_summary_sheet(summary_sheet, original_file_data, first_empty_row)
-
-    def process_waybill_sheet(self, template_workbook: Workbook, waybill_sheet: Worksheet, original_file_data: pd.DataFrame, first_empty_row: int, collection_total_row: int, original_file_data_count: int):
-      """
-      处理运单信息工作表
-      """
-      if template_workbook is None or waybill_sheet is None:
-          self.logger.error("获取模板工作表失败")
-          return False
-
-      waybill_sheet_count = waybill_sheet.max_row
-
-      # 处理中间的行数是否够填充数据
-      need_fill_row_count = original_file_data_count - (waybill_sheet_count - first_empty_row)
-      if need_fill_row_count > 0:
-        # 需要填充的行数
-        for i in range(need_fill_row_count):
-          waybill_sheet.append(original_file_data.iloc[i+first_empty_row].to_dict())
-        collection_total_row = waybill_sheet_count + need_fill_row_count
-
-      self.fill_waybill_sheet(waybill_sheet, original_file_data, first_empty_row)
-
-    def fill_waybill_sheet(self, waybill_sheet: Worksheet, original_file_data: pd.DataFrame, first_empty_row: int):
-        """
-        填充运单信息工作表
-        """
-        try:
-            # 获取数据字段到模板字段的映射关系
-            field_mappings = self.sheet_mappings["运单信息"]
-
-            # 获取模板表头到列号的映射
-            header_column_mapping = self.get_header_column_mapping(waybill_sheet)
-
-            # 检查原始数据的列名和可用数据
-            available_columns = original_file_data.columns.tolist()
-            self.logger.info(f"原始数据可用列: {available_columns}")
-            self.logger.info(f"模板表头到列号映射: {header_column_mapping}")
-
-            # 数据行数
-            data_row_count = len(original_file_data)
-            self.logger.info(f"需要填充 {data_row_count} 行数据")
-
-            # 逐行填充数据
-            for data_row_idx in range(data_row_count):
-                target_row = first_empty_row + data_row_idx
-                row_data = original_file_data.iloc[data_row_idx]
-
-                self.logger.debug(f"开始填充第 {data_row_idx + 1} 行数据到模板第 {target_row} 行")
-
-                # 遍历字段映射关系
-                for data_field, template_field in field_mappings.items():
-                    try:
-                        # 检查数据中是否有该字段
-                        # print('data_field', data_field, 'available_columns', available_columns, '===============')
-                        if data_field in available_columns:
-                            # 检查模板中是否有对应的表头列
-                            if template_field in header_column_mapping:
-                                col_num = header_column_mapping[template_field]
-                                field_value = row_data[data_field]
-
-                                # 填充数据到指定位置
-                                waybill_sheet.cell(row=target_row, column=col_num).value = field_value
-                                self.logger.debug(f"  填充: {data_field}({field_value}) -> {template_field}(列{col_num})")
-                            else:
-                                self.logger.warning(f"  模板中未找到表头 '{template_field}'，跳过字段 '{data_field}'")
-                        else:
-                            self.logger.warning(f"  原始数据中未找到字段 '{data_field}'，跳过")
-
-                    except Exception as e:
-                        self.logger.error(f"  填充字段 '{data_field}' 时出错: {str(e)}")
-                        continue
-
-            self.logger.info(f"运单信息数据填充完成，共填充 {data_row_count} 行")
-
-        except Exception as e:
-            self.logger.error(f"填充运单信息工作表时出错: {str(e)}")
-            raise
 
     def get_header_column_mapping(self, worksheet, header_row=1):
         """
@@ -372,6 +316,82 @@ class UPSDataProcessor:
             self.logger.error(traceback.format_exc())
             return None, None, None
 
+    def process_waybill_sheet(self, template_workbook: Workbook, waybill_sheet: Worksheet, original_file_data: pd.DataFrame, first_empty_row: int, collection_total_row: int, original_file_data_count: int):
+      """
+      处理运单信息工作表
+      """
+      if template_workbook is None or waybill_sheet is None:
+          self.logger.error("获取模板工作表失败")
+          return False
+
+      waybill_sheet_count = waybill_sheet.max_row
+
+      # 处理中间的行数是否够填充数据
+      need_fill_row_count = original_file_data_count - (waybill_sheet_count - first_empty_row)
+      if need_fill_row_count > 0:
+        # 需要填充的行数
+        for i in range(need_fill_row_count):
+          waybill_sheet.append(original_file_data.iloc[i+first_empty_row].to_dict())
+        collection_total_row = waybill_sheet_count + need_fill_row_count
+
+      self.fill_waybill_sheet(waybill_sheet, original_file_data, first_empty_row)
+
+    def fill_waybill_sheet(self, waybill_sheet: Worksheet, original_file_data: pd.DataFrame, first_empty_row: int):
+        """
+        填充运单信息工作表
+        """
+        try:
+            # 获取数据字段到模板字段的映射关系
+            field_mappings = self.sheet_mappings["运单信息"]
+
+            # 获取模板表头到列号的映射
+            header_column_mapping = self.get_header_column_mapping(waybill_sheet)
+
+            # 检查原始数据的列名和可用数据
+            available_columns = original_file_data.columns.tolist()
+            self.logger.info(f"原始数据可用列: {available_columns}")
+            self.logger.info(f"模板表头到列号映射: {header_column_mapping}")
+
+            # 数据行数
+            data_row_count = len(original_file_data)
+            self.logger.info(f"需要填充 {data_row_count} 行数据")
+
+            # 逐行填充数据
+            for data_row_idx in range(data_row_count):
+                target_row = first_empty_row + data_row_idx
+                row_data = original_file_data.iloc[data_row_idx]
+
+                self.logger.debug(f"开始填充第 {data_row_idx + 1} 行数据到模板第 {target_row} 行")
+
+                # 遍历字段映射关系
+                for data_field, template_field in field_mappings.items():
+                    try:
+                        # 检查数据中是否有该字段
+                        # print('data_field', data_field, 'available_columns', available_columns, '===============')
+                        if data_field in available_columns:
+                            # 检查模板中是否有对应的表头列
+                            if template_field in header_column_mapping:
+                                col_num = header_column_mapping[template_field]
+                                field_value = row_data[data_field]
+
+                                # 填充数据到指定位置
+                                waybill_sheet.cell(row=target_row, column=col_num).value = field_value
+                                self.logger.debug(f"  填充: {data_field}({field_value}) -> {template_field}(列{col_num})")
+                            else:
+                                self.logger.warning(f"  模板中未找到表头 '{template_field}'，跳过字段 '{data_field}'")
+                        else:
+                            self.logger.warning(f"  原始数据中未找到字段 '{data_field}'，跳过")
+
+                    except Exception as e:
+                        self.logger.error(f"  填充字段 '{data_field}' 时出错: {str(e)}")
+                        continue
+
+            self.logger.info(f"运单信息数据填充完成，共填充 {data_row_count} 行")
+
+        except Exception as e:
+            self.logger.error(f"填充运单信息工作表时出错: {str(e)}")
+            raise
+
     def get_template_waybill_sheet(self, template_workbook: Workbook):
         """
         获取模板中的运单信息工作表
@@ -417,6 +437,520 @@ class UPSDataProcessor:
 
         except Exception as e:
             self.logger.error(f"获取运单信息工作表时出错: {str(e)}")
+            return None, None, None
+
+    def process_static_sheet(self, template_workbook: Workbook, static_sheet: Worksheet, original_file_data: pd.DataFrame, first_empty_row: int, collection_total_row: int, original_file_data_count: int):
+        """
+        处理统计工作表
+        """
+        if template_workbook is None or static_sheet is None:
+            self.logger.error("获取模板工作表失败")
+            return False
+
+        try:
+          # 国家	件数	收货实重	收货材积重
+          static_sheet_datas = self.static_country_count(original_file_data, "国家二字码", ["件数", "收货实重", "收货材积重"])
+          print('static_sheet_datas', static_sheet_datas, '===============')
+
+          header_column_mapping = self.get_header_column_mapping(static_sheet)
+
+          field_mappings = self.sheet_mappings["统计"]
+
+          available_columns = static_sheet_datas.columns.tolist()
+
+          data_row_count = len(static_sheet_datas)
+          for data_row_idx in range(data_row_count):
+              target_row = first_empty_row + data_row_idx
+              row_data = static_sheet_datas.iloc[data_row_idx]
+              for data_field, template_field in field_mappings.items():
+                  if data_field in available_columns:
+                      col_num = header_column_mapping[template_field]
+                      field_value = row_data[data_field]
+                      static_sheet.cell(row=target_row, column=col_num).value = field_value
+                      self.logger.debug(f"  填充: {data_field}({field_value}) -> {template_field}(列{col_num})")
+                  else:
+                      self.logger.warning(f"  原始数据中未找到字段 '{data_field}'，跳过")
+
+              self.logger.info(f"统计数据填充完成，共填充 {data_row_count} 行")
+
+        except Exception as e:
+            self.logger.error(f"填充统计工作表时出错: {str(e)}")
+            raise
+
+    def get_template_static_sheet(self, template_workbook: Workbook):
+        """
+        获取模板中的统计工作表
+
+        Args:
+            template_workbook: 模板工作簿
+
+        Returns:
+            tuple: (worksheet, first_empty_row, collection_total_row)
+                - worksheet: 统计工作表对象
+                - first_empty_row: 第一个空行的行号（从1开始）
+                - collection_total_row: "Collection Total"所在的行号（从1开始），未找到返回None
+        """
+        try:
+            self.logger.info(f"开始获取模板统计工作表")
+            sheet_names = template_workbook.sheetnames
+            self.logger.info(f"模板包含的工作表: {sheet_names}")
+            possible_names = ["统计", "Static", "统计信息", "统计信息"]
+            for name in possible_names:
+                if name in sheet_names:
+                    static_sheet = template_workbook[name]
+                    self.logger.info(f"找到统计工作表: '{name}'")
+                    break
+            if static_sheet is None:
+                self.logger.error("未找到统计工作表")
+                return None, None, None
+
+            max_row = static_sheet.max_row
+            max_col = static_sheet.max_column
+            self.logger.info(f"统计工作表范围: {max_row}行 x {max_col}列")
+
+            first_empty_row = self._find_first_empty_row(static_sheet, max_row, max_col)
+            collection_total_row = self._find_collection_total_row(static_sheet, max_row, max_col, ["Total"])
+
+            self.logger.info(f"统计工作表分析完成:")
+            self.logger.info(f"  - 工作表名称: '{static_sheet.title}'")
+            self.logger.info(f"  - 第一个空行: 第{first_empty_row}行")
+            self.logger.info(f"  - Collection Total行: 第{collection_total_row}行" if collection_total_row else "  - Collection Total行: 未找到")
+
+            return static_sheet, first_empty_row, collection_total_row
+        except Exception as e:
+            self.logger.error(f"获取统计工作表时出错: {str(e)}")
+            return None, None, None
+
+    def static_country_count(self, original_file_data: pd.DataFrame, country_column: str, count_columns: list):
+        """
+        根据国家二字码统计件数、收货实重、收货材积重
+
+        Args:
+            original_file_data (pd.DataFrame): 原始数据
+            country_column (str): 国家列名
+            count_columns (list): 需要统计的数值列名列表
+
+        Returns:
+            pd.DataFrame: 按国家分组统计后的数据，包含国家和各项统计数据
+        """
+        try:
+            self.logger.info(f"开始按国家统计数据，国家列: {country_column}, 统计列: {count_columns}")
+
+            # 1. 参数验证
+            if original_file_data is None or original_file_data.empty:
+                self.logger.error("原始数据为空")
+                return pd.DataFrame()
+
+            if not isinstance(country_column, str) or not country_column:
+                self.logger.error("国家列名必须为非空字符串")
+                return pd.DataFrame()
+
+            if not isinstance(count_columns, list) or not count_columns:
+                self.logger.error("统计列名列表不能为空")
+                return pd.DataFrame()
+
+            # 2. 检查列是否存在
+            missing_columns = []
+            available_columns = original_file_data.columns.tolist()
+
+            if country_column not in available_columns:
+                missing_columns.append(country_column)
+
+            for col in count_columns:
+                if col not in available_columns:
+                    missing_columns.append(col)
+
+            if missing_columns:
+                self.logger.error(f"以下列在数据中不存在: {missing_columns}")
+                self.logger.info(f"可用列: {available_columns}")
+                return pd.DataFrame()
+
+            # 3. 数据预处理 - 创建工作副本
+            work_data = original_file_data[[country_column] + count_columns].copy()
+
+            # 4. 国家代码标准化处理
+            work_data[country_column] = work_data[country_column].astype(str).str.strip().str.upper()
+
+            # 过滤掉无效的国家代码
+            before_filter_count = len(work_data)
+            work_data = work_data[
+                (work_data[country_column] != '') &
+                (work_data[country_column] != 'NAN') &
+                (work_data[country_column] != 'NONE') &
+                (work_data[country_column].notna())
+            ]
+            after_filter_count = len(work_data)
+
+            if before_filter_count != after_filter_count:
+                self.logger.warning(f"过滤无效国家代码后，数据行数从 {before_filter_count} 减少到 {after_filter_count}")
+
+            # 5. 数值列类型检查和转换
+            for col in count_columns:
+                try:
+                    # 尝试转换为数值类型
+                    work_data[col] = pd.to_numeric(work_data[col], errors='coerce')
+
+                    # 检查转换后的空值数量
+                    null_count = work_data[col].isnull().sum()
+                    if null_count > 0:
+                        self.logger.warning(f"列 '{col}' 中有 {null_count} 个值无法转换为数字，将用0填充")
+                        work_data[col] = work_data[col].fillna(0)
+
+                except Exception as e:
+                    self.logger.error(f"转换列 '{col}' 为数值类型时出错: {str(e)}")
+                    work_data[col] = 0
+
+            # 6. 检查是否还有有效数据
+            if work_data.empty:
+                self.logger.warning("数据预处理后没有有效数据")
+                return pd.DataFrame(columns=[country_column] + count_columns)
+
+            # 7. 按国家分组统计
+            self.logger.info(f"开始分组统计，有效数据行数: {len(work_data)}")
+            static_sheet_datas = work_data.groupby(country_column)[count_columns].sum().reset_index()
+
+            # 8. 结果验证和排序
+            if not static_sheet_datas.empty:
+                # 按国家代码排序
+                static_sheet_datas = static_sheet_datas.sort_values(by=country_column).reset_index(drop=True)
+
+                # 记录统计结果
+                country_count = len(static_sheet_datas)
+                self.logger.info(f"统计完成，共 {country_count} 个国家:")
+
+                for _, row in static_sheet_datas.iterrows():
+                    country = row[country_column]
+                    stats = [f"{col}:{row[col]}" for col in count_columns]
+                    self.logger.debug(f"  {country}: {', '.join(stats)}")
+
+            else:
+                self.logger.warning("分组统计后没有结果数据")
+
+            return static_sheet_datas
+
+        except Exception as e:
+            self.logger.error(f"按国家统计数据时出错: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return pd.DataFrame()
+
+    def process_german_zipcode_sheet(self, template_workbook: Workbook, german_zipcode_sheet: Worksheet, original_file_data: pd.DataFrame, first_empty_row: int, collection_total_row: int, original_file_data_count: int):
+        """
+        处理德国邮编工作表
+        """
+        if template_workbook is None or german_zipcode_sheet is None:
+            self.logger.error("获取模板工作表失败")
+            return False
+
+        try:
+          # 收件人邮编	件数	收货实重	收货材积重
+          german_zipcode_sheet_datas = self.german_zipcode_count(original_file_data, "收件人邮编", "国家二字码", "DE", ["件数", "收货实重", "收货材积重"])
+          print('german_zipcode_sheet_datas', german_zipcode_sheet_datas, '===============')
+
+          # 添加一列 country
+          if not german_zipcode_sheet_datas.empty:
+              german_zipcode_sheet_datas['country'] = "DE"
+          print('german_zipcode_sheet_datas', german_zipcode_sheet_datas, '===============')
+
+          header_column_mapping = self.get_header_column_mapping(german_zipcode_sheet)
+
+          field_mappings = self.sheet_mappings["德国邮编"]
+
+          available_columns = german_zipcode_sheet_datas.columns.tolist()
+          print('available_columns', available_columns, '===============')
+
+          data_row_count = len(german_zipcode_sheet_datas)
+          for data_row_idx in range(data_row_count):
+              target_row = first_empty_row + data_row_idx
+              row_data = german_zipcode_sheet_datas.iloc[data_row_idx]
+              for data_field, template_field in field_mappings.items():
+                  if data_field in available_columns:
+                      col_num = header_column_mapping[template_field]
+                      field_value = row_data[data_field]
+                      german_zipcode_sheet.cell(row=target_row, column=col_num).value = field_value
+                      self.logger.debug(f"  填充: {data_field}({field_value}) -> {template_field}(列{col_num})")
+                  else:
+                      self.logger.warning(f"  原始数据中未找到字段 '{data_field}'，跳过")
+
+              self.logger.info(f"德国邮编数据填充完成，共填充 {data_row_count} 行")
+        except Exception as e:
+            self.logger.error(f"填充德国邮编工作表时出错: {str(e)}")
+            raise
+
+    def german_zipcode_count(self, original_file_data: pd.DataFrame, zipcode_column: str, country_column: str, country_code: str, count_columns: list):
+        """
+        根据指定国家的邮编统计件数、收货实重、收货材积重
+
+        Args:
+            original_file_data (pd.DataFrame): 原始数据
+            zipcode_column (str): 邮编列名
+            country_column (str): 国家列名
+            country_code (str): 国家代码（如"DE"表示德国）
+            count_columns (list): 需要统计的数值列名列表
+
+        Returns:
+            pd.DataFrame: 按邮编分组统计后的数据，包含邮编和各项统计数据
+        """
+        try:
+            self.logger.info(f"开始按{country_code}国家邮编统计数据，邮编列: {zipcode_column}, 国家列: {country_column}, 统计列: {count_columns}")
+
+            # 1. 参数验证
+            if original_file_data is None or original_file_data.empty:
+                self.logger.error("原始数据为空")
+                return pd.DataFrame()
+
+            if not isinstance(zipcode_column, str) or not zipcode_column:
+                self.logger.error("邮编列名必须为非空字符串")
+                return pd.DataFrame()
+
+            if not isinstance(country_column, str) or not country_column:
+                self.logger.error("国家列名必须为非空字符串")
+                return pd.DataFrame()
+
+            if not isinstance(country_code, str) or not country_code:
+                self.logger.error("国家代码必须为非空字符串")
+                return pd.DataFrame()
+
+            if not isinstance(count_columns, list) or not count_columns:
+                self.logger.error("统计列名列表不能为空")
+                return pd.DataFrame()
+
+            # 2. 检查列是否存在
+            missing_columns = []
+            available_columns = original_file_data.columns.tolist()
+
+            required_columns = [zipcode_column, country_column] + count_columns
+            for col in required_columns:
+                if col not in available_columns:
+                    missing_columns.append(col)
+
+            if missing_columns:
+                self.logger.error(f"以下列在数据中不存在: {missing_columns}")
+                self.logger.info(f"可用列: {available_columns}")
+                return pd.DataFrame()
+
+            # 3. 数据预处理 - 创建工作副本
+            work_data = original_file_data[required_columns].copy()
+
+            # 4. 国家代码标准化并筛选指定国家
+            work_data[country_column] = work_data[country_column].astype(str).str.strip().str.upper()
+            country_code_upper = country_code.upper()
+
+            # 筛选指定国家的数据
+            before_country_filter = len(work_data)
+            work_data = work_data[work_data[country_column] == country_code_upper]
+            after_country_filter = len(work_data)
+
+            self.logger.info(f"筛选{country_code_upper}国家数据后，数据行数从 {before_country_filter} 减少到 {after_country_filter}")
+
+            if work_data.empty:
+                self.logger.warning(f"没有找到国家代码为 {country_code_upper} 的数据")
+                return pd.DataFrame(columns=[zipcode_column] + count_columns)
+
+            # 5. 邮编标准化处理
+            work_data[zipcode_column] = work_data[zipcode_column].astype(str).str.strip()
+
+            # 过滤掉无效的邮编
+            before_zipcode_filter = len(work_data)
+            work_data = work_data[
+                (work_data[zipcode_column] != '') &
+                (work_data[zipcode_column] != 'NAN') &
+                (work_data[zipcode_column] != 'NONE') &
+                (work_data[zipcode_column].notna())
+            ]
+            after_zipcode_filter = len(work_data)
+
+            if before_zipcode_filter != after_zipcode_filter:
+                self.logger.warning(f"过滤无效邮编后，数据行数从 {before_zipcode_filter} 减少到 {after_zipcode_filter}")
+
+            # 6. 数值列类型检查和转换
+            for col in count_columns:
+                try:
+                    # 除了收件人邮编，其他都尝试转换为数值类型
+                    _item_data = work_data[col]
+                    if col != zipcode_column:
+                      _item_data = pd.to_numeric(_item_data, errors='coerce')
+                      # 检查转换后的空值数量
+                      null_count = work_data[col].isnull().sum()
+                      if null_count > 0:
+                          self.logger.warning(f"列 '{col}' 中有 {null_count} 个值无法转换为数字，将用0填充")
+                          _item_data = _item_data.fillna(0)
+
+                    work_data[col] = _item_data
+
+                except Exception as e:
+                    self.logger.error(f"转换列 '{col}' 为数值类型时出错: {str(e)}")
+                    work_data[col] = 0
+
+            # 7. 检查是否还有有效数据
+            if work_data.empty:
+                self.logger.warning("数据预处理后没有有效数据")
+                return pd.DataFrame(columns=[zipcode_column] + count_columns)
+
+            # 8. 按邮编分组统计
+            self.logger.info(f"开始按邮编分组统计，有效数据行数: {len(work_data)}")
+            zipcode_stats = work_data.groupby(zipcode_column)[count_columns].sum().reset_index()
+
+            # 9. 结果验证和排序
+            if not zipcode_stats.empty:
+                # 按邮编排序
+                zipcode_stats = zipcode_stats.sort_values(by=zipcode_column).reset_index(drop=True)
+
+                # 记录统计结果
+                zipcode_count = len(zipcode_stats)
+                self.logger.info(f"{country_code_upper}邮编统计完成，共 {zipcode_count} 个邮编:")
+
+                for _, row in zipcode_stats.iterrows():
+                    zipcode = row[zipcode_column]
+                    stats = [f"{col}:{row[col]}" for col in count_columns]
+                    self.logger.debug(f"  邮编{zipcode}: {', '.join(stats)}")
+
+            else:
+                self.logger.warning("邮编分组统计后没有结果数据")
+
+            return zipcode_stats
+
+        except Exception as e:
+            self.logger.error(f"按邮编统计数据时出错: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return pd.DataFrame()
+
+    def get_template_german_zipcode_sheet(self, template_workbook: Workbook):
+        """
+        获取模板中的德国邮编工作表
+
+        Args:
+            template_workbook: 模板工作簿
+
+        Returns:
+            tuple: (worksheet, first_empty_row, collection_total_row)
+                - worksheet: 德国邮编工作表对象
+                - first_empty_row: 第一个空行的行号（从1开始）
+                - collection_total_row: "Collection Total"所在的行号（从1开始），未找到返回None
+        """
+        try:
+            self.logger.info(f"开始获取模板德国邮编工作表")
+            sheet_names = template_workbook.sheetnames
+            self.logger.info(f"模板包含的工作表: {sheet_names}")
+            possible_names = ["德国邮编", "German Zipcode", "德国邮编"]
+            for name in possible_names:
+                if name in sheet_names:
+                    german_zipcode_sheet = template_workbook[name]
+                    self.logger.info(f"找到德国邮编工作表: '{name}'")
+                    break
+            if german_zipcode_sheet is None:
+                self.logger.error("未找到德国邮编工作表")
+                return None, None, None
+
+            max_row = german_zipcode_sheet.max_row
+            max_col = german_zipcode_sheet.max_column
+            self.logger.info(f"德国邮编工作表范围: {max_row}行 x {max_col}列")
+
+            first_empty_row = self._find_first_empty_row(german_zipcode_sheet, max_row, max_col)
+            collection_total_row = self._find_collection_total_row(german_zipcode_sheet, max_row, max_col, ["Total"])
+
+            self.logger.info(f"德国邮编工作表分析完成:")
+            self.logger.info(f"  - 工作表名称: '{german_zipcode_sheet.title}'")
+            self.logger.info(f"  - 第一个空行: 第{first_empty_row}行")
+            self.logger.info(f"  - Collection Total行: 第{collection_total_row}行" if collection_total_row else "  - Collection Total行: 未找到")
+
+            return german_zipcode_sheet, first_empty_row, collection_total_row
+        except Exception as e:
+            self.logger.error(f"获取德国邮编工作表时出错: {str(e)}")
+            return None, None, None
+
+    def process_sub_order_number_sheet(self, template_workbook: Workbook, sub_order_number_sheet: Worksheet, original_file_data: pd.DataFrame, first_empty_row: int, collection_total_row: int, original_file_data_count: int):
+        """
+        处理子单号工作表
+        """
+        if template_workbook is None or sub_order_number_sheet is None:
+            self.logger.error("获取模板工作表失败")
+            return False
+
+        try:
+          # 客户单号	子转单号
+          sub_order_number_sheet_datas = original_file_data[["客户单号", "子转单号"]].copy()
+          
+          # 将子转单号转换为文本格式
+          sub_order_number_sheet_datas['子转单号'] = sub_order_number_sheet_datas['子转单号'].astype(str)
+          
+          print('sub_order_number_sheet_datas', sub_order_number_sheet_datas, '===============')
+
+          header_column_mapping = self.get_header_column_mapping(sub_order_number_sheet)
+
+          field_mappings = self.sheet_mappings["子单号"]
+
+          available_columns = sub_order_number_sheet_datas.columns.tolist()
+
+          data_row_count = len(sub_order_number_sheet_datas)
+          for data_row_idx in range(data_row_count):
+              target_row = first_empty_row + data_row_idx
+              row_data = sub_order_number_sheet_datas.iloc[data_row_idx]
+              for data_field, template_field in field_mappings.items():
+                  if data_field in available_columns:
+                      col_num = header_column_mapping[template_field]
+                      field_value = row_data[data_field]
+                      
+                      # 确保子转单号以文本格式填充
+                      if data_field == "子转单号":
+                          field_value = str(field_value)
+                      
+                      sub_order_number_sheet.cell(row=target_row, column=col_num).value = field_value
+                      self.logger.debug(f"  填充: {data_field}({field_value}) -> {template_field}(列{col_num})")
+                  else:
+                      self.logger.warning(f"  原始数据中未找到字段 '{data_field}'，跳过")
+
+              self.logger.info(f"子单号数据填充完成，共填充 {data_row_count} 行")
+
+        except Exception as e:
+            self.logger.error(f"填充子单号工作表时出错: {str(e)}")
+            raise
+
+    def get_template_sub_order_number_sheet(self, template_workbook: Workbook):
+        """
+        获取模板中的子单号工作表
+
+        Args:
+            template_workbook: 模板工作簿
+
+        Returns:
+            tuple: (worksheet, first_empty_row, collection_total_row)
+                - worksheet: 子单号工作表对象
+                - first_empty_row: 第一个空行的行号（从1开始）
+                - collection_total_row: "Collection Total"所在的行号（从1开始），未找到返回None
+        """
+
+        try:
+            self.logger.info(f"开始获取模板子单号工作表")
+            sheet_names = template_workbook.sheetnames
+            self.logger.info(f"模板包含的工作表: {sheet_names}")
+            possible_names = ["子单号", "Sub Order Number", "子单号"]
+            sub_order_number_sheet = None
+            for name in possible_names:
+                if name in sheet_names:
+                    sub_order_number_sheet = template_workbook[name]
+                    self.logger.info(f"找到子单号工作表: '{name}'")
+                    break
+            if sub_order_number_sheet is None:
+                self.logger.error("未找到子单号工作表")
+                return None, None, None
+                
+            max_row = sub_order_number_sheet.max_row
+            max_col = sub_order_number_sheet.max_column
+            self.logger.info(f"子单号工作表范围: {max_row}行 x {max_col}列")
+            
+            first_empty_row = self._find_first_empty_row(sub_order_number_sheet, max_row, max_col)
+            collection_total_row = self._find_collection_total_row(sub_order_number_sheet, max_row, max_col, ["Total"])
+            
+            self.logger.info(f"子单号工作表分析完成:")
+            self.logger.info(f"  - 工作表名称: '{sub_order_number_sheet.title}'")
+            self.logger.info(f"  - 第一个空行: 第{first_empty_row}行")
+            self.logger.info(f"  - Collection Total行: 第{collection_total_row}行" if collection_total_row else "  - Collection Total行: 未找到")
+            
+            return sub_order_number_sheet, first_empty_row, collection_total_row
+        except Exception as e:
+            self.logger.error(f"获取子单号工作表时出错: {str(e)}")
             return None, None, None
 
     def _find_first_empty_row(self, worksheet, max_row, max_col):
