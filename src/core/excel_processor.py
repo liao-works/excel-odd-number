@@ -4,8 +4,6 @@ Excel文件处理核心逻辑
 负责读取Excel文件、数据验证、错误处理等
 """
 import pandas as pd
-import openpyxl
-from openpyxl import load_workbook
 import logging
 import json
 import sys
@@ -36,18 +34,25 @@ class ExcelProcessor:
         Returns:
             str: 输出文件路径，失败返回None
         """
-        output_path = self.get_output_path(template_type)
-        template_path = self.get_template_path(template_type)
+        try:
+          output_path = self.get_output_path(template_type)
+          template_path = self.get_template_path(template_type)
 
-        original_file_data = self.get_original_file_data(input_file, 0)
-        original_detail_file_data = self.get_original_file_data(detail_file, 0)
+          original_file_data = self.get_original_file_data(input_file, 0)
+          original_detail_file_data = self.get_original_file_data(detail_file, 0)
 
-        if template_type == "UPS":
-            ups_processor = UPSDataProcessor()
-            ups_processor.process_ups_data(original_file_data, original_detail_file_data, template_path, output_path)
-        elif template_type == "DPD":
-            dpd_processor = DPDDataProcessor()
-            dpd_processor.process_dpd_data(input_file, detail_file, template_path, output_path)
+          if template_type == "UPS":
+              ups_processor = UPSDataProcessor()
+              ups_processor.process_ups_data(original_file_data, original_detail_file_data, template_path, output_path)
+          elif template_type == "DPD":
+              dpd_processor = DPDDataProcessor()
+              dpd_processor.process_dpd_data(input_file, detail_file, template_path, output_path)
+
+          return output_path
+
+        except Exception as e:
+            self.logger.error(f"处理Excel文件时出错: {str(e)}")
+            return None
 
     def get_original_file_data(self, input_file, sheet_index):
         """
