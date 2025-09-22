@@ -38,34 +38,48 @@ jobs:
         
     - name: 设置控制台编码
       run: |
+        # 设置PowerShell和控制台编码为UTF-8
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+        $PSDefaultParameterValues['*:Encoding'] = 'utf8'
         $env:PYTHONIOENCODING = "utf-8"
-        Write-Host "Console encoding set to UTF-8"
+        # 设置文件系统编码
+        [System.Text.Encoding]::Default = [System.Text.Encoding]::UTF8
+        Write-Host "Console and PowerShell encoding set to UTF-8"
         
     - name: 执行打包
       run: python build_github.py
       
     - name: 验证打包结果
       run: |
-        $exePath = "dist/Excel数据处理工具.exe"
-        if (Test-Path $exePath) {
-          Write-Host "✅ EXE文件生成成功"
-          $size = (Get-Item $exePath).Length / 1MB
+        # 使用Get-ChildItem查找EXE文件，避免中文路径编码问题
+        $exeFiles = Get-ChildItem -Path "dist" -Filter "*.exe"
+        if ($exeFiles.Count -gt 0) {
+          $exeFile = $exeFiles[0]
+          Write-Host "✅ EXE文件生成成功: $($exeFile.Name)"
+          $size = $exeFile.Length / 1MB
           Write-Host "文件大小: $([math]::Round($size, 1)) MB"
         } else {
           Write-Host "❌ EXE文件生成失败"
+          Get-ChildItem -Path "dist" -Force | Format-Table Name, Length -AutoSize
           exit 1
         }
         
     - name: 重命名文件为英文
       run: |
-        if (Test-Path "dist/Excel数据处理工具.exe") {
-          Rename-Item "dist/Excel数据处理工具.exe" "dist/ExcelDataProcessor.exe"
+        # 使用Get-ChildItem避免中文路径编码问题
+        $exeFile = Get-ChildItem -Path "dist" -Filter "*.exe" | Where-Object { $_.Name -like "*Excel*" -or $_.Name -like "*数据*" }
+        if ($exeFile) {
+          Rename-Item $exeFile.FullName "dist/ExcelDataProcessor.exe"
+          Write-Host "✅ EXE文件重命名成功: $($exeFile.Name) -> ExcelDataProcessor.exe"
         }
-        if (Test-Path "dist/使用说明.txt") {
-          Rename-Item "dist/使用说明.txt" "dist/UserGuide.txt"
+
+        $txtFile = Get-ChildItem -Path "dist" -Filter "*.txt" | Where-Object { $_.Name -like "*使用*" -or $_.Name -like "*说明*" }
+        if ($txtFile) {
+          Rename-Item $txtFile.FullName "dist/UserGuide.txt"
+          Write-Host "✅ TXT文件重命名成功: $($txtFile.Name) -> UserGuide.txt"
         }
+
         if (Test-Path "dist/UserGuide.txt") {
           Write-Host "✅ UserGuide.txt found"
         }
