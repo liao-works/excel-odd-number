@@ -38,6 +38,9 @@ class ExcelProcessor:
         try:
           output_path = self.get_output_path(template_type)
           template_path = self.get_template_path(template_type)
+          self.logger.info(f"输出文件路径: {output_path}")
+          self.logger.info(f"处理类型: {template_type}")
+          self.logger.info(f"模板文件路径: {template_path}")
 
           original_file_data = self.get_original_file_data(input_file, 0)
           original_detail_file_data = self.get_original_file_data(detail_file, 0)
