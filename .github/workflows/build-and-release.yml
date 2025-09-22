@@ -36,8 +36,15 @@ jobs:
         if (!(Test-Path "templates")) { New-Item -ItemType Directory -Path "templates" }
         if (!(Test-Path "assets")) { New-Item -ItemType Directory -Path "assets" }
         
+    - name: 设置控制台编码
+      run: |
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+        $env:PYTHONIOENCODING = "utf-8"
+        Write-Host "Console encoding set to UTF-8"
+        
     - name: 执行打包
-      run: python build_en.py
+      run: python build_github.py
       
     - name: 验证打包结果
       run: |

@@ -7,6 +7,31 @@ import sys
 import shutil
 from pathlib import Path
 import datetime
+import os
+
+# 设置环境变量强制使用UTF-8编码
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+def safe_print(text):
+    """安全的打印函数，处理编码问题"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # 如果中文输出失败，使用英文
+        if "使用单文件模式打包" in text:
+            print("Starting single file packaging...")
+        elif "单文件打包成功" in text:
+            print("[OK] Single file packaging successful!")
+        elif "文件大小" in text:
+            print("File size: " + text.split(":")[1] if ":" in text else text)
+        elif "打包失败" in text:
+            print("[ERROR] Packaging failed")
+        else:
+            # 尝试转换为ASCII
+            try:
+                print(text.encode('ascii', 'ignore').decode('ascii'))
+            except:
+                print("Output encoding error - check logs")
 
 def create_usage_instructions():
     """创建详细的使用说明文件"""
