@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from src.core.ups.ups_processor import UPSDataProcessor
+from src.core.dpd.dpd_processor import DPDProcessor
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -45,7 +46,7 @@ class ExcelProcessor:
               ups_processor = UPSDataProcessor()
               ups_processor.process_ups_data(original_file_data, original_detail_file_data, template_path, output_path)
           elif template_type == "DPD":
-              dpd_processor = DPDDataProcessor()
+              dpd_processor = DPDProcessor()
               dpd_processor.process_dpd_data(input_file, detail_file, template_path, output_path)
 
           return output_path
