@@ -176,12 +176,15 @@ def create_usage_instructions():
 
 def onefile_build():
     """使用单文件模式打包"""
-    print("使用单文件模式打包...")
+    try:
+        print("Starting single file packaging...")
+    except UnicodeEncodeError:
+        print("Starting single file packaging...")
 
     # 删除dist目录
     if Path('dist').exists():
         shutil.rmtree('dist')
-    # 删除build目录
+    # 删除build目录  
     if Path('build').exists():
         shutil.rmtree('build')
 

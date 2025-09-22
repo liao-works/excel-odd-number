@@ -37,7 +37,7 @@ jobs:
         if (!(Test-Path "assets")) { New-Item -ItemType Directory -Path "assets" }
         
     - name: 执行打包
-      run: python build_simple.py
+      run: python build_en.py
       
     - name: 验证打包结果
       run: |
@@ -58,6 +58,9 @@ jobs:
         }
         if (Test-Path "dist/使用说明.txt") {
           Rename-Item "dist/使用说明.txt" "dist/UserGuide.txt"
+        }
+        if (Test-Path "dist/UserGuide.txt") {
+          Write-Host "✅ UserGuide.txt found"
         }
         
     - name: 准备发布文件
