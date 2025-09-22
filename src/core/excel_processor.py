@@ -186,13 +186,16 @@ class ExcelProcessor:
             settings_file = PROJECT_ROOT / "settings.json"
 
             if settings_file.exists():
+                self.logger.info(f"从设置文件读取模板文件路径: {settings_file}")
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
 
                 if template_type == "UPS":
                     template_path = settings.get("ups_template")
+                    self.logger.info(f"UPS模板文件路径: {template_path}")
                 elif template_type == "DPD":
                     template_path = settings.get("dpd_template")
+                    self.logger.info(f"DPD模板文件路径: {template_path}")
                 else:
                     self.logger.error(f"未知的模板类型: {template_type}")
                     return None
@@ -208,6 +211,7 @@ class ExcelProcessor:
 
             default_path = default_templates.get(template_type)
             if default_path and default_path.exists():
+                self.logger.info(f"使用默认模板路径: {default_path}")
                 return str(default_path)
 
             self.logger.error(f"找不到{template_type}模板文件")
