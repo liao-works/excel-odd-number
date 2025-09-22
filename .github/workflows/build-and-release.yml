@@ -1,0 +1,197 @@
+name: Build and Release Excel Tool
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送以v开头的tag时触发，如 v1.0.0
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: 升级pip
+      run: python -m pip install --upgrade pip
+      
+    - name: 安装依赖
+      run: |
+        pip install -r requirements.txt
+        
+    - name: 验证环境
+      run: |
+        python --version
+        pip list
+        
+    - name: 创建必要目录
+      run: |
+        if (!(Test-Path "templates")) { New-Item -ItemType Directory -Path "templates" }
+        if (!(Test-Path "assets")) { New-Item -ItemType Directory -Path "assets" }
+        
+    - name: 执行打包
+      run: python build_simple.py
+      
+    - name: 验证打包结果
+      run: |
+        $exePath = "dist/Excel数据处理工具.exe"
+        if (Test-Path $exePath) {
+          Write-Host "✅ EXE文件生成成功"
+          $size = (Get-Item $exePath).Length / 1MB
+          Write-Host "文件大小: $([math]::Round($size, 1)) MB"
+        } else {
+          Write-Host "❌ EXE文件生成失败"
+          exit 1
+        }
+        
+    - name: 重命名文件为英文
+      run: |
+        # 重命名为英文文件名，避免GitHub上传问题
+        if (Test-Path "dist/Excel数据处理工具.exe") {
+          Rename-Item "dist/Excel数据处理工具.exe" "dist/ExcelDataProcessor.exe"
+        }
+        if (Test-Path "dist/使用说明.txt") {
+          Rename-Item "dist/使用说明.txt" "dist/UserGuide.txt"
+        }
+        
+    - name: 准备发布文件
+      run: |
+        # 创建发布目录
+        if (Test-Path "release") { Remove-Item "release" -Recurse -Force }
+        New-Item -ItemType Directory -Path "release"
+        
+        # 复制主要文件
+        Copy-Item "dist/ExcelDataProcessor.exe" "release/"
+        Copy-Item "dist/UserGuide.txt" "release/"
+        
+        # 复制模板和资源文件（如果存在）
+        if (Test-Path "templates") {
+          Copy-Item "templates" "release/" -Recurse
+        }
+        if (Test-Path "assets") {
+          Copy-Item "assets" "release/" -Recurse
+        }
+        
+        # 获取版本号
+        $version = if ($env:GITHUB_REF -match 'refs/tags/(.+)') { $matches[1] } else { "dev-build" }
+        $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        
+        # 创建版本信息文件（英文）
+        $versionInfo = @"
+# Excel Data Processor - Version Information
+
+Version: $version
+Build Time: $buildTime
+Build Environment: GitHub Actions
+Operating System: Windows Latest
+Python Version: 3.11
+
+## File Description
+- ExcelDataProcessor.exe: Main application
+- UserGuide.txt: Detailed usage instructions
+- templates/: Template files directory (if available)
+- assets/: Asset files directory (if available)
+
+## Installation Instructions
+1. Download and extract the complete package
+2. Double-click ExcelDataProcessor.exe to start
+3. First-time use requires template file configuration
+4. See UserGuide.txt for detailed instructions
+
+"@
+        $versionInfo | Out-File -FilePath "release/VersionInfo.txt" -Encoding UTF8
+        
+    - name: 创建压缩包
+      run: |
+        $version = if ($env:GITHUB_REF -match 'refs/tags/(.+)') { $matches[1] } else { "dev-build" }
+        $zipName = "ExcelDataProcessor-$version-Windows.zip"
+        Compress-Archive -Path "release/*" -DestinationPath $zipName
+        Write-Host "Created ZIP: $zipName"
+        
+    - name: 获取版本标签
+      id: get_version
+      run: |
+        if ($env:GITHUB_REF -match 'refs/tags/(.+)') {
+          $version = $matches[1]
+        } else {
+          $version = "dev-build-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        }
+        $buildTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        echo "build_time=$buildTime" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+        echo "Build Time: $buildTime"
+        
+    - name: 创建Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.version }}
+        release_name: Excel Data Processor ${{ steps.get_version.outputs.version }}
+        body: |
+          ## 📦 Excel Data Processor ${{ steps.get_version.outputs.version }}
+          
+          ### ✨ Main Features
+          - 🚚 UPS Data Processing: Read Excel files and fill data using UPS templates
+          - 📦 DPD Data Processing: Read Excel files and process data using DPD templates
+          - 🎯 One-click Processing: Select file → Choose type → Auto process → Save to desktop
+          - ⚙️ Template Settings: Support custom UPS and DPD Excel templates
+          
+          ### 🚀 Quick Start
+          1. **Download**: Download `ExcelDataProcessor-${{ steps.get_version.outputs.version }}-Windows.zip`
+          2. **Extract**: Extract to any directory
+          3. **Launch**: Double-click `ExcelDataProcessor.exe`
+          4. **Setup**: First-time use requires template configuration in Settings
+          5. **Use**: Follow the interface prompts to process Excel files
+          
+          ### 📋 System Requirements
+          - Windows 10 or higher
+          - 500MB available disk space
+          - Supported Excel formats: .xlsx, .xls
+          
+          ### 📖 Documentation
+          Complete user guide included in the package: `UserGuide.txt`
+          
+          ### 🔧 Technical Information
+          - Build Time: ${{ steps.get_version.outputs.build_time }}
+          - Python Version: 3.11
+          - Packaging Tool: PyInstaller
+          - Architecture: Windows x64
+          
+        draft: false
+        prerelease: false
+        
+    - name: 上传Release资产 - ZIP包
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./ExcelDataProcessor-${{ steps.get_version.outputs.version }}-Windows.zip
+        asset_name: ExcelDataProcessor-${{ steps.get_version.outputs.version }}-Windows.zip
+        asset_content_type: application/zip
+        
+    - name: 上传Release资产 - EXE文件
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/ExcelDataProcessor.exe
+        asset_name: ExcelDataProcessor-${{ steps.get_version.outputs.version }}.exe
+        asset_content_type: application/octet-stream
+        
+    - name: 构建完成通知
+      run: |
+        Write-Host "🎉 构建和发布完成！"
+        Write-Host "📦 Release版本: ${{ steps.get_version.outputs.version }}"
+        Write-Host "🔗 查看发布: ${{ steps.create_release.outputs.html_url }}"
