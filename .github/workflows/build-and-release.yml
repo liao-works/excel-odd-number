@@ -168,40 +168,33 @@ jobs:
         $version = "${{ steps.get_version.outputs.version }}"
         $buildTime = "${{ steps.get_version.outputs.build_time }}"
 
-        # 创建Release说明
-        $releaseBody = @"
-## 📦 Excel Data Processor $version
-
-### ✨ Main Features
-- 🚚 UPS Data Processing: Read Excel files and fill data using UPS templates
-- 📦 DPD Data Processing: Read Excel files and process data using DPD templates
-- 🎯 One-click Processing: Select file → Choose type → Auto process → Save to desktop
-- ⚙️ Template Settings: Support custom UPS and DPD Excel templates
-
-### 🚀 Quick Start
-1. **Download**: Download the ZIP package or individual files below
-2. **Extract**: Extract to any directory (if using ZIP)
-3. **Launch**: Double-click the main application file (.exe)
-4. **Setup**: First-time use requires template configuration in Settings
-5. **Use**: Follow the interface prompts to process Excel files
-
-### 📋 System Requirements
-- Windows 10 or higher
-- 500MB available disk space
-- Supported Excel formats: .xlsx, .xls
-
-### 📖 Documentation
-Complete user guide included in the package
-
-### 🔧 Technical Information
-- Build Time: $buildTime
-- Python Version: 3.11
-- Packaging Tool: PyInstaller
-- Architecture: Windows x64
-"@
+        # 创建Release说明文件
+        $releaseNotes = "## 📦 Excel Data Processor $version`n`n"
+        $releaseNotes += "### ✨ Main Features`n"
+        $releaseNotes += "- 🚚 UPS Data Processing: Read Excel files and fill data using UPS templates`n"
+        $releaseNotes += "- 📦 DPD Data Processing: Read Excel files and process data using DPD templates`n"
+        $releaseNotes += "- 🎯 One-click Processing: Select file → Choose type → Auto process → Save to desktop`n"
+        $releaseNotes += "- ⚙️ Template Settings: Support custom UPS and DPD Excel templates`n`n"
+        $releaseNotes += "### 🚀 Quick Start`n"
+        $releaseNotes += "1. **Download**: Download the ZIP package or individual files below`n"
+        $releaseNotes += "2. **Extract**: Extract to any directory (if using ZIP)`n"
+        $releaseNotes += "3. **Launch**: Double-click the main application file (.exe)`n"
+        $releaseNotes += "4. **Setup**: First-time use requires template configuration in Settings`n"
+        $releaseNotes += "5. **Use**: Follow the interface prompts to process Excel files`n`n"
+        $releaseNotes += "### 📋 System Requirements`n"
+        $releaseNotes += "- Windows 10 or higher`n"
+        $releaseNotes += "- 500MB available disk space`n"
+        $releaseNotes += "- Supported Excel formats: .xlsx, .xls`n`n"
+        $releaseNotes += "### 📖 Documentation`n"
+        $releaseNotes += "Complete user guide included in the package`n`n"
+        $releaseNotes += "### 🔧 Technical Information`n"
+        $releaseNotes += "- Build Time: $buildTime`n"
+        $releaseNotes += "- Python Version: 3.11`n"
+        $releaseNotes += "- Packaging Tool: PyInstaller`n"
+        $releaseNotes += "- Architecture: Windows x64"
 
         # 使用gh创建Release
-        gh release create $version --title "Excel Data Processor $version" --notes $releaseBody
+        gh release create $version --title "Excel Data Processor $version" --notes $releaseNotes
 
         # 上传ZIP包
         $zipFile = "ExcelDataProcessor-$version-Windows.zip"
