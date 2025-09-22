@@ -9,7 +9,12 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+
+    env:
+      PYTHONIOENCODING: utf-8
+      # 设置PowerShell的默认编码行为
+      PSDefaultParameterValues: "*:Encoding=utf8"
+
     steps:
     - name: Checkout代码
       uses: actions/checkout@v4
@@ -38,13 +43,16 @@ jobs:
         
     - name: 设置控制台编码
       run: |
-        # 设置PowerShell和控制台编码为UTF-8
+        # 设置PowerShell和控制台编码为UTF-8 (兼容PowerShell 7)
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         [Console]::InputEncoding = [System.Text.Encoding]::UTF8
         $PSDefaultParameterValues['*:Encoding'] = 'utf8'
         $env:PYTHONIOENCODING = "utf-8"
-        # 设置文件系统编码
-        [System.Text.Encoding]::Default = [System.Text.Encoding]::UTF8
+        # 设置当前会话的文件编码
+        $OutputEncoding = [System.Text.Encoding]::UTF8
+        # 确保PowerShell模块使用UTF-8
+        $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+        $PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
         Write-Host "Console and PowerShell encoding set to UTF-8"
         
     - name: 执行打包
