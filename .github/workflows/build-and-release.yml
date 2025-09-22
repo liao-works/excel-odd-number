@@ -53,7 +53,6 @@ jobs:
         
     - name: 重命名文件为英文
       run: |
-        # 重命名为英文文件名，避免GitHub上传问题
         if (Test-Path "dist/Excel数据处理工具.exe") {
           Rename-Item "dist/Excel数据处理工具.exe" "dist/ExcelDataProcessor.exe"
         }
@@ -63,15 +62,12 @@ jobs:
         
     - name: 准备发布文件
       run: |
-        # 创建发布目录
         if (Test-Path "release") { Remove-Item "release" -Recurse -Force }
         New-Item -ItemType Directory -Path "release"
         
-        # 复制主要文件
         Copy-Item "dist/ExcelDataProcessor.exe" "release/"
         Copy-Item "dist/UserGuide.txt" "release/"
         
-        # 复制模板和资源文件（如果存在）
         if (Test-Path "templates") {
           Copy-Item "templates" "release/" -Recurse
         }
@@ -79,34 +75,27 @@ jobs:
           Copy-Item "assets" "release/" -Recurse
         }
         
-        # 获取版本号
         $version = if ($env:GITHUB_REF -match 'refs/tags/(.+)') { $matches[1] } else { "dev-build" }
         $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         
-        # 创建版本信息文件（英文）
-        $versionInfo = @"
-# Excel Data Processor - Version Information
-
-Version: $version
-Build Time: $buildTime
-Build Environment: GitHub Actions
-Operating System: Windows Latest
-Python Version: 3.11
-
-## File Description
-- ExcelDataProcessor.exe: Main application
-- UserGuide.txt: Detailed usage instructions
-- templates/: Template files directory (if available)
-- assets/: Asset files directory (if available)
-
-## Installation Instructions
-1. Download and extract the complete package
-2. Double-click ExcelDataProcessor.exe to start
-3. First-time use requires template file configuration
-4. See UserGuide.txt for detailed instructions
-
-"@
-        $versionInfo | Out-File -FilePath "release/VersionInfo.txt" -Encoding UTF8
+        $content = "# Excel Data Processor - Version Information`n`n"
+        $content += "Version: $version`n"
+        $content += "Build Time: $buildTime`n"
+        $content += "Build Environment: GitHub Actions`n"
+        $content += "Operating System: Windows Latest`n"
+        $content += "Python Version: 3.11`n`n"
+        $content += "## File Description`n"
+        $content += "- ExcelDataProcessor.exe: Main application`n"
+        $content += "- UserGuide.txt: Detailed usage instructions`n"
+        $content += "- templates/: Template files directory (if available)`n"
+        $content += "- assets/: Asset files directory (if available)`n`n"
+        $content += "## Installation Instructions`n"
+        $content += "1. Download and extract the complete package`n"
+        $content += "2. Double-click ExcelDataProcessor.exe to start`n"
+        $content += "3. First-time use requires template file configuration`n"
+        $content += "4. See UserGuide.txt for detailed instructions`n"
+        
+        $content | Out-File -FilePath "release/VersionInfo.txt" -Encoding UTF8
         
     - name: 创建压缩包
       run: |
@@ -166,7 +155,6 @@ Python Version: 3.11
           - Python Version: 3.11
           - Packaging Tool: PyInstaller
           - Architecture: Windows x64
-          
         draft: false
         prerelease: false
         
