@@ -47,7 +47,7 @@ class ExcelProcessor:
               ups_processor.process_ups_data(original_file_data, original_detail_file_data, template_path, output_path)
           elif template_type == "DPD":
               dpd_processor = DPDProcessor()
-              dpd_processor.process_dpd_data(input_file, detail_file, template_path, output_path)
+              dpd_processor.process_dpd_data(original_file_data, original_detail_file_data, template_path, output_path)
 
           return output_path
 
