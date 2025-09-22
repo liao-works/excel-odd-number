@@ -73,32 +73,27 @@ jobs:
           exit 1
         }
         
-    - name: 重命名文件为英文
-      run: |
-        # 使用Get-ChildItem避免中文路径编码问题
-        $exeFile = Get-ChildItem -Path "dist" -Filter "*.exe" | Where-Object { $_.Name -like "*Excel*" -or $_.Name -like "*数据*" }
-        if ($exeFile) {
-          Rename-Item $exeFile.FullName "dist/ExcelDataProcessor.exe"
-          Write-Host "✅ EXE文件重命名成功: $($exeFile.Name) -> ExcelDataProcessor.exe"
-        }
-
-        $txtFile = Get-ChildItem -Path "dist" -Filter "*.txt" | Where-Object { $_.Name -like "*使用*" -or $_.Name -like "*说明*" }
-        if ($txtFile) {
-          Rename-Item $txtFile.FullName "dist/UserGuide.txt"
-          Write-Host "✅ TXT文件重命名成功: $($txtFile.Name) -> UserGuide.txt"
-        }
-
-        if (Test-Path "dist/UserGuide.txt") {
-          Write-Host "✅ UserGuide.txt found"
-        }
-        
     - name: 准备发布文件
       run: |
         if (Test-Path "release") { Remove-Item "release" -Recurse -Force }
         New-Item -ItemType Directory -Path "release"
-        
-        Copy-Item "dist/ExcelDataProcessor.exe" "release/"
-        Copy-Item "dist/UserGuide.txt" "release/"
+
+        # 智能复制EXE文件（保持原始文件名）
+        $exeFiles = Get-ChildItem -Path "dist" -Filter "*.exe"
+        if ($exeFiles.Count -gt 0) {
+          $exeFile = $exeFiles[0]
+          Copy-Item $exeFile.FullName "release/"
+          Write-Host "✅ 复制EXE文件: $($exeFile.Name)"
+        }
+
+        # 智能复制说明文件（保持原始文件名）
+        $txtFiles = Get-ChildItem -Path "dist" -Filter "*.txt"
+        if ($txtFiles.Count -gt 0) {
+          foreach ($txtFile in $txtFiles) {
+            Copy-Item $txtFile.FullName "release/"
+            Write-Host "✅ 复制说明文件: $($txtFile.Name)"
+          }
+        }
         
         if (Test-Path "templates") {
           Copy-Item "templates" "release/" -Recurse
@@ -117,15 +112,28 @@ jobs:
         $content += "Operating System: Windows Latest`n"
         $content += "Python Version: 3.11`n`n"
         $content += "## File Description`n"
-        $content += "- ExcelDataProcessor.exe: Main application`n"
-        $content += "- UserGuide.txt: Detailed usage instructions`n"
+        # 动态生成文件描述
+        $exeFiles = Get-ChildItem -Path "release" -Filter "*.exe"
+        if ($exeFiles.Count -gt 0) {
+          $content += "- $($exeFiles[0].Name): Main application (Excel数据处理工具)`n"
+        }
+        $txtFiles = Get-ChildItem -Path "release" -Filter "*.txt" | Where-Object { $_.Name -ne "VersionInfo.txt" }
+        if ($txtFiles.Count -gt 0) {
+          foreach ($txtFile in $txtFiles) {
+            $content += "- $($txtFile.Name): Usage instructions and documentation`n"
+          }
+        }
         $content += "- templates/: Template files directory (if available)`n"
         $content += "- assets/: Asset files directory (if available)`n`n"
         $content += "## Installation Instructions`n"
         $content += "1. Download and extract the complete package`n"
-        $content += "2. Double-click ExcelDataProcessor.exe to start`n"
+        if ($exeFiles.Count -gt 0) {
+          $content += "2. Double-click '$($exeFiles[0].Name)' to start the application`n"
+        } else {
+          $content += "2. Double-click the main executable file to start`n"
+        }
         $content += "3. First-time use requires template file configuration`n"
-        $content += "4. See UserGuide.txt for detailed instructions`n"
+        $content += "4. See the included documentation files for detailed instructions`n"
         
         $content | Out-File -FilePath "release/VersionInfo.txt" -Encoding UTF8
         
@@ -201,14 +209,24 @@ jobs:
         asset_content_type: application/zip
         
     - name: 上传Release资产 - EXE文件
-      uses: actions/upload-release-asset@v1
+      run: |
+        # 动态查找EXE文件并上传
+        $exeFiles = Get-ChildItem -Path "dist" -Filter "*.exe"
+        if ($exeFiles.Count -gt 0) {
+          $exeFile = $exeFiles[0]
+          $version = if ($env:GITHUB_REF -match 'refs/tags/(.+)') { $matches[1] } else { "dev-build" }
+          $assetName = "$($exeFile.BaseName)-$version$($exeFile.Extension)"
+
+          # 使用gh命令上传文件（避免中文路径问题）
+          $uploadUrl = "${{ steps.create_release.outputs.upload_url }}"
+          gh release upload $version $exeFile.FullName --clobber
+          Write-Host "✅ 已上传EXE文件: $($exeFile.Name) as $assetName"
+        } else {
+          Write-Host "❌ 未找到EXE文件"
+          exit 1
+        }
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/ExcelDataProcessor.exe
-        asset_name: ExcelDataProcessor-${{ steps.get_version.outputs.version }}.exe
-        asset_content_type: application/octet-stream
         
     - name: 构建完成通知
       run: |
