@@ -304,6 +304,13 @@ class DPDProcessor:
         self.logger.error(f"处理子单号工作表时出错: {str(e)}")
         raise
 
+  def get_field_value_from_data_source(self, data_source: pd.DataFrame, data_field: str, data_field_value: str):
+    """
+    从数据源中获取指定列字段值等于指定值的行数据
+    """
+    return data_source[data_source[data_field] == data_field_value]
+
+
   def fill_sub_order_sheet(self, sub_order_sheet: Worksheet, original_detail_file_data: pd.DataFrame, original_file_data: pd.DataFrame, first_empty_row: int):
     """
     填充子单号工作表
@@ -347,7 +354,7 @@ class DPDProcessor:
             for source_type, source_mappings in field_mappings.items():
                 # 获取对应的数据源
                 current_data_source = data_sources.get(source_type)
-                
+
                 if current_data_source is None:
                     self.logger.warning(f"数据源 '{source_type}' 为空，跳过")
                     continue
@@ -359,7 +366,7 @@ class DPDProcessor:
                 # 获取当前行数据
                 row_data = current_data_source.iloc[data_row_idx]
                 available_columns = current_data_source.columns.tolist()
-                
+
                 self.logger.debug(f"处理数据源 '{source_type}' 的字段映射")
 
                 # 遍历该数据源的字段映射关系
