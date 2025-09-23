@@ -21,7 +21,15 @@ class DPDProcessor:
         "方数": "Cubic Number(CBM)",
         "收件人邮编": "post Code"
       },
-      "总结单": {},
+      "总结单": {
+        "de_postcodes": ["4347", "6126", "14656", "21423", "36251", "39171", "44145", "47495", "56068", "59368", "67227", "75177", "90451"],
+        "supported_countries": ["DE", "FR", "IT", "ES", "NL", "PL", "CZ", "BE"],
+        "de_start_col": 6,  # F列
+        "other_countries_start_col": 19,  # S列
+        "other_col": 26,  # Z列
+        "total_col": 27,  # AA列
+        "data_row": 4  # 数据填充行
+      },
       "子单号": {
         "detail": {
           "客户单号": "参考号 （必填）",
@@ -86,6 +94,11 @@ class DPDProcessor:
         sub_order_sheet, first_empty_row, collection_total_row = self.get_template_sub_order_sheet(template_workbook)
         if sub_order_sheet is not None:
             self.process_sub_order_sheet(template_workbook, sub_order_sheet, original_detail_file_data, original_file_data, first_empty_row, collection_total_row, original_file_data_count)
+
+        # 处理总结单工作表
+        summary_sheet = self.get_template_summary_sheet(template_workbook)
+        if summary_sheet is not None:
+            self.process_summary_sheet(template_workbook, summary_sheet, original_file_data)
 
         # 保存文件
         template_workbook.save(output_path)
@@ -510,3 +523,343 @@ class DPDProcessor:
     except Exception as e:
         self.logger.error(f"查找Collection Total行时出错: {str(e)}")
         return None
+
+  def classify_countries_data(self, original_file_data: pd.DataFrame):
+    """
+    按国家代码分类数据
+    
+    Args:
+        original_file_data: 原始数据
+        
+    Returns:
+        dict: 按国家代码分类的数据字典
+    """
+    try:
+        summary_config = self.sheet_mappings["总结单"]
+        supported_countries = summary_config["supported_countries"]
+        de_postcodes = summary_config["de_postcodes"]
+        
+        # 检查是否有国家二字码字段
+        if "国家二字码" not in original_file_data.columns:
+            self.logger.error("原始数据中未找到'国家二字码'字段")
+            return {}
+        
+        classified_data = {}
+        
+        # 处理DE国家特殊逻辑
+        de_data = original_file_data[original_file_data["国家二字码"] == "DE"]
+        if not de_data.empty:
+            # DE国家中指定邮编的数据
+            if "收件人邮编" in de_data.columns:
+                de_specified_postcodes = de_data[de_data["收件人邮编"].astype(str).isin([str(pc) for pc in de_postcodes])]
+                classified_data["DE"] = de_specified_postcodes
+                self.logger.debug(f"DE指定邮编: {len(de_specified_postcodes)} 条记录")
+                
+                # DE国家中非指定邮编的数据归入other
+                de_other_postcodes = de_data[~de_data["收件人邮编"].astype(str).isin([str(pc) for pc in de_postcodes])]
+                self.logger.debug(f"DE其他邮编: {len(de_other_postcodes)} 条记录")
+            else:
+                # 如果没有邮编字段，所有DE数据都归入other
+                de_other_postcodes = de_data
+                classified_data["DE"] = pd.DataFrame()  # 空的DE数据
+                self.logger.debug(f"DE数据（无邮编字段）: {len(de_other_postcodes)} 条记录")
+        else:
+            de_other_postcodes = pd.DataFrame()
+            classified_data["DE"] = pd.DataFrame()
+        
+        # 分类其他支持的国家（除DE外）
+        other_supported_countries = [c for c in supported_countries if c != "DE"]
+        for country in other_supported_countries:
+            country_data = original_file_data[original_file_data["国家二字码"] == country]
+            classified_data[country] = country_data
+            self.logger.debug(f"国家 {country}: {len(country_data)} 条记录")
+        
+        # 分类其他国家 + DE中非指定邮编的数据
+        other_countries_data = original_file_data[~original_file_data["国家二字码"].isin(supported_countries)]
+        
+        # 合并DE其他邮编数据和其他国家数据
+        if not de_other_postcodes.empty and not other_countries_data.empty:
+            other_data = pd.concat([other_countries_data, de_other_postcodes], ignore_index=True)
+        elif not de_other_postcodes.empty:
+            other_data = de_other_postcodes
+        elif not other_countries_data.empty:
+            other_data = other_countries_data
+        else:
+            other_data = pd.DataFrame()
+            
+        classified_data["other"] = other_data
+        self.logger.debug(f"其他类别: {len(other_data)} 条记录")
+        
+        self.logger.info(f"数据分类完成，共分为 {len(classified_data)} 个类别")
+        return classified_data
+        
+    except Exception as e:
+        self.logger.error(f"分类国家数据时出错: {str(e)}")
+        return {}
+
+  def count_de_postcodes(self, de_data: pd.DataFrame):
+    """
+    统计DE国家指定邮编的件数
+    
+    Args:
+        de_data: DE国家的数据
+        
+    Returns:
+        dict: 邮编对应的件数字典
+    """
+    try:
+        summary_config = self.sheet_mappings["总结单"]
+        de_postcodes = summary_config["de_postcodes"]
+        
+        # 检查是否有必要字段
+        if "收件人邮编" not in de_data.columns:
+            self.logger.error("DE数据中未找到'收件人邮编'字段")
+            return {}
+            
+        if "件数" not in de_data.columns:
+            self.logger.error("DE数据中未找到'件数'字段")
+            return {}
+        
+        postcode_counts = {}
+        
+        # 统计每个指定邮编的件数
+        for postcode in de_postcodes:
+            # 将邮编转换为字符串进行比较
+            postcode_data = de_data[de_data["收件人邮编"].astype(str) == str(postcode)]
+            total_pieces = postcode_data["件数"].sum() if not postcode_data.empty else 0
+            postcode_counts[postcode] = total_pieces
+            self.logger.debug(f"邮编 {postcode}: {total_pieces} 件")
+        
+        self.logger.info(f"DE邮编统计完成，共统计 {len(de_postcodes)} 个邮编")
+        return postcode_counts
+        
+    except Exception as e:
+        self.logger.error(f"统计DE邮编件数时出错: {str(e)}")
+        return {}
+
+  def count_country_pieces(self, country_data: pd.DataFrame):
+    """
+    统计指定国家数据的总件数
+    
+    Args:
+        country_data: 国家数据
+        
+    Returns:
+        int: 总件数
+    """
+    try:
+        if country_data.empty:
+            return 0
+            
+        if "件数" not in country_data.columns:
+            self.logger.error("数据中未找到'件数'字段")
+            return 0
+        
+        total_pieces = country_data["件数"].sum()
+        return int(total_pieces)
+        
+    except Exception as e:
+        self.logger.error(f"统计国家件数时出错: {str(e)}")
+        return 0
+
+  def get_template_summary_sheet(self, template_workbook: Workbook):
+    """
+    获取模板中的总结单工作表
+    
+    Args:
+        template_workbook: 模板工作簿
+        
+    Returns:
+        Worksheet: 总结单工作表，失败返回None
+    """
+    try:
+        self.logger.info("开始获取模板总结单工作表")
+        sheet_names = template_workbook.sheetnames
+        self.logger.info(f"模板包含的工作表: {sheet_names}")
+        
+        # 尝试多种可能的总结单工作表名称
+        possible_names = ["总结单", "Summary", "汇总", "总结", "Summary Sheet"]
+        summary_sheet = None
+        for name in possible_names:
+            if name in sheet_names:
+                summary_sheet = template_workbook[name]
+                self.logger.info(f"找到总结单工作表: '{name}'")
+                break
+                
+        if summary_sheet is None:
+            self.logger.error("未找到总结单工作表")
+            return None
+            
+        max_row = summary_sheet.max_row
+        max_col = summary_sheet.max_column
+        self.logger.info(f"总结单工作表范围: {max_row}行 x {max_col}列")
+        
+        self.logger.info(f"总结单工作表分析完成:")
+        self.logger.info(f"  - 工作表名称: '{summary_sheet.title}'")
+        
+        return summary_sheet
+        
+    except Exception as e:
+        self.logger.error(f"获取总结单工作表时出错: {str(e)}")
+        return None
+
+  def process_summary_sheet(self, template_workbook: Workbook, summary_sheet: Worksheet, original_file_data: pd.DataFrame):
+    """
+    处理总结单工作表
+    
+    Args:
+        template_workbook: 模板工作簿
+        summary_sheet: 总结单工作表
+        original_file_data: 原始数据
+    """
+    if template_workbook is None or summary_sheet is None:
+        self.logger.error("获取总结单工作表失败")
+        return False
+        
+    try:
+        self.fill_summary_sheet(summary_sheet, original_file_data)
+        self.logger.info("总结单工作表处理完成")
+        return True
+    except Exception as e:
+        self.logger.error(f"处理总结单工作表时出错: {str(e)}")
+        return False
+
+  def fill_summary_sheet(self, summary_sheet: Worksheet, original_file_data: pd.DataFrame):
+    """
+    填充总结单工作表
+    
+    Args:
+        summary_sheet: 总结单工作表
+        original_file_data: 原始数据
+    """
+    try:
+        summary_config = self.sheet_mappings["总结单"]
+        data_row = summary_config["data_row"]
+        
+        self.logger.info("开始填充总结单数据")
+        
+        # 1. 按国家代码分类数据
+        classified_data = self.classify_countries_data(original_file_data)
+        if not classified_data:
+            self.logger.error("数据分类失败，无法继续填充总结单")
+            return
+            
+        # 2. 填充DE邮编统计
+        self._fill_de_postcode_stats(summary_sheet, classified_data.get("DE", pd.DataFrame()), summary_config)
+        
+        # 3. 填充其他国家统计  
+        self._fill_other_countries_stats(summary_sheet, classified_data, summary_config)
+        
+        # 4. 填充Other类别统计
+        self._fill_other_category_stats(summary_sheet, classified_data.get("other", pd.DataFrame()), summary_config)
+        
+        # 5. 计算并填充总计
+        self._fill_total_stats(summary_sheet, classified_data, summary_config)
+        
+        self.logger.info("总结单数据填充完成")
+        
+    except Exception as e:
+        self.logger.error(f"填充总结单工作表时出错: {str(e)}")
+        raise
+
+  def _fill_de_postcode_stats(self, summary_sheet: Worksheet, de_data: pd.DataFrame, summary_config: dict):
+    """
+    填充DE邮编统计数据
+    """
+    try:
+        if de_data.empty:
+            self.logger.info("没有DE国家数据，跳过DE邮编统计")
+            return
+            
+        self.logger.info("开始填充DE邮编统计")
+        
+        # 统计DE邮编件数
+        postcode_counts = self.count_de_postcodes(de_data)
+        
+        # 填充到工作表
+        data_row = summary_config["data_row"]
+        start_col = summary_config["de_start_col"]
+        
+        for i, (postcode, count) in enumerate(postcode_counts.items()):
+            col_num = start_col + i
+            summary_sheet.cell(row=data_row, column=col_num).value = count
+            self.logger.debug(f"填充DE邮编 {postcode}: {count} 件到列 {col_num}")
+            
+        self.logger.info(f"DE邮编统计填充完成，共填充 {len(postcode_counts)} 个邮编")
+        
+    except Exception as e:
+        self.logger.error(f"填充DE邮编统计时出错: {str(e)}")
+        raise
+
+  def _fill_other_countries_stats(self, summary_sheet: Worksheet, classified_data: dict, summary_config: dict):
+    """
+    填充其他国家统计数据（FR、IT、ES、NL、PL、CZ、BE）
+    """
+    try:
+        self.logger.info("开始填充其他国家统计")
+        
+        other_countries = ["FR", "IT", "ES", "NL", "PL", "CZ", "BE"]
+        data_row = summary_config["data_row"]
+        start_col = summary_config["other_countries_start_col"]
+        
+        for i, country in enumerate(other_countries):
+            country_data = classified_data.get(country, pd.DataFrame())
+            count = self.count_country_pieces(country_data)
+            
+            col_num = start_col + i
+            summary_sheet.cell(row=data_row, column=col_num).value = count
+            self.logger.debug(f"填充国家 {country}: {count} 件到列 {col_num}")
+            
+        self.logger.info(f"其他国家统计填充完成，共填充 {len(other_countries)} 个国家")
+        
+    except Exception as e:
+        self.logger.error(f"填充其他国家统计时出错: {str(e)}")
+        raise
+
+  def _fill_other_category_stats(self, summary_sheet: Worksheet, other_data: pd.DataFrame, summary_config: dict):
+    """
+    填充Other类别统计数据
+    """
+    try:
+        self.logger.info("开始填充Other类别统计")
+        
+        count = self.count_country_pieces(other_data)
+        
+        data_row = summary_config["data_row"]
+        other_col = summary_config["other_col"]
+        
+        summary_sheet.cell(row=data_row, column=other_col).value = count
+        self.logger.debug(f"填充Other类别: {count} 件到列 {other_col}")
+        
+        self.logger.info(f"Other类别统计填充完成: {count} 件")
+        
+    except Exception as e:
+        self.logger.error(f"填充Other类别统计时出错: {str(e)}")
+        raise
+
+  def _fill_total_stats(self, summary_sheet: Worksheet, classified_data: dict, summary_config: dict):
+    """
+    计算并填充总计统计数据
+    """
+    try:
+        self.logger.info("开始计算并填充总计统计")
+        
+        total_count = 0
+        
+        # 统计所有分类的件数
+        for category, data in classified_data.items():
+            count = self.count_country_pieces(data)
+            total_count += count
+            self.logger.debug(f"类别 {category}: {count} 件")
+            
+        data_row = summary_config["data_row"]
+        total_col = summary_config["total_col"]
+        
+        summary_sheet.cell(row=data_row, column=total_col).value = total_count
+        self.logger.debug(f"填充总计: {total_count} 件到列 {total_col}")
+        
+        self.logger.info(f"总计统计填充完成: {total_count} 件")
+        
+    except Exception as e:
+        self.logger.error(f"填充总计统计时出错: {str(e)}")
+        raise
