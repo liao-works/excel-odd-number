@@ -29,8 +29,8 @@ class DPDProcessor:
         },
         "list": {
           "转单号": "主单号（必填）",
-          "收件人公司": "收件人",
-          "收件人姓名": "公司",
+          "收件人公司": "公司",
+          "收件人姓名": "收件人",
           "方数": "方数"
         }
       }
@@ -359,13 +359,45 @@ class DPDProcessor:
                     self.logger.warning(f"数据源 '{source_type}' 为空，跳过")
                     continue
 
-                if data_row_idx >= len(current_data_source):
-                    self.logger.warning(f"数据源 '{source_type}' 行数不足，跳过第{data_row_idx + 1}行")
-                    continue
-
                 # 获取当前行数据
-                row_data = current_data_source.iloc[data_row_idx]
-                available_columns = current_data_source.columns.tolist()
+                if source_type == "detail":
+                    # detail源：直接按行索引获取
+                    if data_row_idx >= len(current_data_source):
+                        self.logger.warning(f"数据源 '{source_type}' 行数不足，跳过第{data_row_idx + 1}行")
+                        continue
+                    row_data = current_data_source.iloc[data_row_idx]
+                    available_columns = current_data_source.columns.tolist()
+
+                elif source_type == "list":
+                    # list源：根据客户单号匹配
+                    detail_row_data = original_detail_file_data.iloc[data_row_idx]
+
+                    # 检查明细表是否有"客户单号"字段
+                    if "客户单号" not in original_detail_file_data.columns:
+                        self.logger.error("明细表中未找到'客户单号'字段，无法进行匹配")
+                        continue
+
+                    customer_order_no = detail_row_data["客户单号"]
+                    self.logger.debug(f"查找客户单号: {customer_order_no}")
+
+                    # 在list数据源中查找匹配的行
+                    matched_rows = self.get_field_value_from_data_source(
+                        current_data_source, "客户单号", customer_order_no
+                    )
+
+                    if matched_rows.empty:
+                        self.logger.warning(f"在list数据源中未找到客户单号'{customer_order_no}'的匹配行，跳过")
+                        continue
+                    elif len(matched_rows) > 1:
+                        self.logger.warning(f"在list数据源中找到多个客户单号'{customer_order_no}'的匹配行，使用第一个")
+
+                    # 使用第一个匹配行的数据
+                    row_data = matched_rows.iloc[0]
+                    available_columns = current_data_source.columns.tolist()
+
+                else:
+                    self.logger.warning(f"未知的数据源类型: {source_type}")
+                    continue
 
                 self.logger.debug(f"处理数据源 '{source_type}' 的字段映射")
 
